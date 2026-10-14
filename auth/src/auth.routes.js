@@ -1,7 +1,20 @@
 const express = require('express');
-const { signup, login } = require('./auth.service');
+const {
+  signup,
+  login,
+  createSession,
+  destroySession,
+  SESSION_TTL_MS,
+} = require('./auth.service');
 
 const router = express.Router();
+
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.COOKIE_SECURE !== 'false',
+  sameSite: 'strict',
+  maxAge: SESSION_TTL_MS,
+};
 
 router.post('/signup', async (req, res) => {
   const { email, password } = req.body;
@@ -28,11 +41,28 @@ router.post('/login', async (req, res) => {
 
   const user = await login(email, password);
   if (!user) {
-    // same message for "no such user" and "wrong password"
     return res.status(401).json({ error: 'Invalid email or password' });
   }
 
+  const sessionId = createSession(user.id);
+  res.cookie('session_id', sessionId, cookieOptions);
   res.json({ message: 'Login successful', user });
+});
+
+router.post('/logout', (req, res) => {
+  const sessionId = req.cookies && req.cookies.session_id;
+  if (sessionId) destroySession(sessionId);
+  res.clearCookie('session_id', {
+    httpOnly: cookieOptions.httpOnly,
+    secure: cookieOptions.secure,
+    sameSite: cookieOptions.sameSite,
+  });
+  res.json({ message: 'Logged out' });
+});
+
+router.get('/me', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Not logged in' });
+  res.json(req.user);
 });
 
 module.exports = router;
