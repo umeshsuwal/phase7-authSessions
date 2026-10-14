@@ -23,3 +23,22 @@ bcrypt makes hashing safer in two ways:
 
 - It adds a random **salt** to each password, so two users with the same password get different hashes, which stops precomputed lookup tables.
 - It is deliberately **slow** (the work factor), so guessing millions of passwords against a stolen hash takes far too long.
+
+## Task 2: RBAC and secure session cookies
+
+The `GET /admin/users` route is protected on the server by
+`requireRole('admin')`. The middleware uses the user loaded from the
+server-side session, so a client cannot grant itself admin access by changing
+request data.
+
+The session cookie is configured with these protections:
+
+- **HttpOnly:** JavaScript cannot read the session cookie, which limits the
+  ability of an injected XSS script to steal the session token.
+- **Secure:** The browser sends the session cookie only over HTTPS, preventing
+  it from travelling over an insecure connection.
+- **SameSite=Strict:** The browser does not send the session cookie on
+  cross-site requests, reducing CSRF risk.
+
+For local HTTP development, `.env` sets `COOKIE_SECURE=false`. For an HTTPS
+deployment, set `COOKIE_SECURE=true`.

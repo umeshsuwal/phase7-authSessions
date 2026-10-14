@@ -1,4 +1,3 @@
 const db = require('./src/db');
 
-const users = db.prepare('SELECT id, email, passwordHash FROM users').all();
-console.table(users);
+console.table(db.prepare('SELECT id, email, role, passwordHash FROM users').all());
