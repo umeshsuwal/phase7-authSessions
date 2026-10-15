@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create account</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-white text-black">
+  <main class="flex min-h-screen items-center justify-center px-6 py-12">
+    <section class="w-full max-w-sm">
+      <header class="mb-10">
+        <p class="mb-8 text-sm font-bold uppercase tracking-widest">Local workspace</p>
+        <h1 class="text-3xl font-semibold tracking-tight">Create account</h1>
+        <p class="mt-2 text-sm text-neutral-500">Set up your account to get started.</p>
+      </header>
+
+      <form id="signup" class="space-y-5">
+        <label class="block">
+          <span class="mb-2 block text-sm font-medium">Display name</span>
+          <input name="name" class="w-full border border-neutral-300 px-3 py-3 text-sm outline-none transition focus:border-black">
+        </label>
+        <label class="block">
+          <span class="mb-2 block text-sm font-medium">Email</span>
+          <input name="email" type="text" autocomplete="email" class="w-full border border-neutral-300 px-3 py-3 text-sm outline-none transition focus:border-black">
+        </label>
+        <label class="block">
+          <span class="mb-2 block text-sm font-medium">Password</span>
+          <input name="password" type="password" autocomplete="new-password" class="w-full border border-neutral-300 px-3 py-3 text-sm outline-none transition focus:border-black">
+        </label>
+        <button class="w-full bg-black px-4 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">Create account</button>
+      </form>
+
+      <p id="out" role="status" class="mt-4 min-h-5 text-sm"></p>
+      <p class="mt-8 border-t border-neutral-200 pt-6 text-center text-sm text-neutral-500">
+        Already have an account? <a href="/signin.html" class="font-semibold text-black underline underline-offset-4">Sign in</a>
+      </p>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById('signup');
+    const button = form.querySelector('button');
+    const output = document.getElementById('out');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      button.disabled = true;
+      button.textContent = 'Creating account...';
+      output.textContent = '';
+
+      try {
+        const res = await fetch('/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.fromEntries(new FormData(form))),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Unable to create account.');
+        output.className = 'mt-4 min-h-5 text-sm text-black';
+        output.textContent = 'Account created. Redirecting to sign in...';
+        setTimeout(() => { window.location.href = '/signin.html'; }, 700);
+      } catch (error) {
+        output.className = 'mt-4 min-h-5 text-sm text-red-700';
+        output.textContent = error.message || 'Unable to create account. Try again.';
+        button.disabled = false;
+        button.textContent = 'Create account';
+      }
+    });
+  </script>
+</body>
+</html>
