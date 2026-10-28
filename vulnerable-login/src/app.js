@@ -1,5 +1,8 @@
+require('dotenv').config();
+
 const path = require('path');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const db = require('./db');
@@ -17,16 +20,16 @@ function currentUser(req) {
   return db.prepare('SELECT id, name, email, bio FROM users WHERE id = ?').get(userId);
 }
 
-// VULNERABILITY 3: weak password storage
 app.post('/signup', (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Name, email and password required' });
   }
   try {
+    const passwordHash = bcrypt.hashSync(password, 12);
     const info = db
-      .prepare('INSERT INTO users (name, email, password) VALUES (?, ?, ?)')
-      .run(name, email, password); // no hashing
+      .prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)')
+      .run(name, email, passwordHash);
     res.status(201).json({ id: info.lastInsertRowid, name, email });
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
@@ -36,22 +39,30 @@ app.post('/signup', (req, res) => {
   }
 });
 
-// VULNERABILITY 1: SQL injection
-// VULNERABILITY 4: session cookie with no HttpOnly / Secure / SameSite
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
-
-  const query = `SELECT * FROM users WHERE email = '${email}' AND password = '${password}'`;
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: 'Email and password required' });
+  }
 
   try {
-    const user = db.prepare(query).get();
-    if (!user) return res.status(401).json({ success: false });
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      return res.status(401).json({ success: false });
+    }
 
     const sessionId = crypto.randomBytes(16).toString('hex');
     sessions[sessionId] = user.id;
 
-    res.cookie('session_id', sessionId);
-    res.json({ success: true, user });
+    res.cookie('session_id', sessionId, {
+      httpOnly: true,
+      secure: process.env.COOKIE_SECURE !== 'false',
+      sameSite: 'strict',
+    });
+    res.json({
+      success: true,
+      user: { id: user.id, name: user.name, email: user.email, bio: user.bio },
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -76,12 +87,20 @@ app.post('/bio', (req, res) => {
   res.json({ message: 'Profile saved', id: user.id });
 });
 
-// VULNERABILITY 2: stored XSS
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 app.get('/profile/:id', (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).send('User not found');
 
-  res.send(`<h1>${user.name}'s Profile</h1><p>${user.bio}</p>`);
+  res.send(`<h1>${escapeHtml(user.name)}'s Profile</h1><p>${escapeHtml(user.bio)}</p>`);
 });
 
 app.listen(3000, '127.0.0.1', () => {

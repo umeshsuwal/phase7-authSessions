@@ -1,14 +1,14 @@
-# Vulnerable Login
+# Authentication Security Lab
 
-> **Warning:** This app is intentionally insecure. Use it only on your local
-> machine. Never deploy it or use real user data.
+> **Warning:** This app is a local training app. Never deploy it or use real
+> user data.
 
-This project is a local training app for learning about:
+This project documents the original vulnerabilities and their fixes:
 
 - SQL injection
 - Stored XSS
-- Plaintext passwords
-- Insecure cookies
+- Password hashing
+- Secure session cookies
 
 ## Run the app
 
@@ -35,48 +35,94 @@ Use port `3000`, not Live Server port `5500`.
 4. Update your name and bio on the dashboard.
 5. Open your public profile.
 
-## Test the vulnerabilities
+## Exploit documentation (before patch)
 
-Only perform these tests locally.
+These tests were performed against the original vulnerable implementation.
 
 ### 1. SQL injection
 
-On the sign-in page, enter this as the email:
+Email:
 
 ```text
 ' OR '1'='1' -- 
 ```
 
-Enter any password. Login should succeed without the correct password.
+Password: `anything`
+
+The original query was:
+
+```sql
+SELECT * FROM users WHERE email = '' OR '1'='1' -- ' AND password = 'anything'
+```
+
+The `--` starts a SQL comment, so the trailing password predicate is ignored.
+The query returns the first user and creates a session without checking the
+password. In the captured local run, this logged in as the first account
+returned by SQLite.
 
 ### 2. Stored XSS
 
 Save this as your bio:
 
 ```html
-<script>alert('stored xss')</script>
+<script>alert('XSS: ' + document.cookie)</script>
 ```
 
-Open your public profile. An alert should appear.
+The original profile endpoint inserted `user.name` and `user.bio` directly into
+an HTML response. The script executed when the profile was viewed. The alert
+showed the session cookie value when the cookie was readable by JavaScript;
+an attacker could exfiltrate that value instead of displaying it.
 
-### 3. Plaintext password
+### 3. Password storage and cookies
 
-Passwords are stored in `vuln.db`. To view them, run:
+The original app stored passwords directly in `vuln.db` and sent the session
+cookie without `HttpOnly`, `Secure`, or `SameSite` flags.
+
+## Patch
+
+- Login now selects by email using a parameterized query and verifies the
+  password separately with bcryptjs.
+- Signup stores a bcrypt password hash. Existing local plaintext rows are
+  migrated to hashes at startup.
+- Profile names and bios are HTML-escaped before interpolation.
+- Session cookies use `HttpOnly`, `SameSite=Strict`, and `Secure` by default.
+  The checked-in `.env` is intentionally absent; use `.env.example` and set
+  `COOKIE_SECURE=false` only for local HTTP.
+
+## Re-verification (after patch)
+
+The exact original attacks were repeated after patching:
+
+1. Email `' OR '1'='1' -- ` with password `anything` returns
+   `401 {"success":false}` and does not set a session cookie.
+2. Bio `<script>alert('XSS: ' + document.cookie)</script>` is returned in the
+   profile response as escaped literal text:
+   `&lt;script&gt;alert(&#039;XSS: &#039; + document.cookie)&lt;/script&gt;`.
+   No script executes and no alert appears.
+
+Captured patched responses:
+
+```text
+POST /login
+HTTP/1.1 401 Unauthorized
+{"success":false}
+
+GET /profile/2
+HTTP/1.1 200 OK
+<h1>Proof User's Profile</h1><p>&lt;script&gt;alert(&#039;XSS: &#039; + document.cookie)&lt;/script&gt;</p>
+```
+
+To reproduce the checks locally:
 
 ```powershell
-node -e "const db=require('better-sqlite3')('vuln.db'); console.table(db.prepare('SELECT email, password FROM users').all())"
+Invoke-RestMethod -Method Post http://127.0.0.1:3000/login `
+  -ContentType 'application/json' `
+  -Body '{"email":"'' OR ''1''=''1'' -- ","password":"anything"}'
 ```
 
-### 4. Insecure cookie
-
-After logging in:
-
-1. Press `F12`.
-2. Open **Application** or **Storage**.
-3. Open **Cookies** for `http://127.0.0.1:3000`.
-4. Select `session_id`.
-
-The cookie has no `HttpOnly`, `Secure`, or `SameSite` flags.
+For the XSS check, create a normal account, log in, POST the exact payload to
+`/bio`, then request `/profile/<id>` and confirm the response contains escaped
+text rather than a `<script>` element.
 
 ## Screenshots
 
