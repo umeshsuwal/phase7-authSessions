@@ -5,7 +5,8 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "smoke": "node -e \"const app=require('./src/app.js'); console.log('smoke-ok', typeof app); process.exit(0);\""
+    "smoke": "node -e \"const app=require('./src/app.js'); console.log('smoke-ok', typeof app); process.exit(0);\"",
+    "test": "node --test test/security.test.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

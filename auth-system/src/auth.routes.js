@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const {
   signup,
   login,
@@ -56,6 +57,11 @@ router.post('/login', async (req, res) => {
 
   const sessionId = createSession(result.id);
   res.cookie('session_id', sessionId, cookieOptions);
+  res.cookie('csrf_token', crypto.randomBytes(32).toString('hex'), {
+    secure: cookieOptions.secure,
+    sameSite: cookieOptions.sameSite,
+    maxAge: SESSION_TTL_MS,
+  });
   res.json({
     message: 'Login successful',
     accessToken: result.accessToken,
@@ -74,7 +80,7 @@ router.post('/refresh', (req, res) => {
     const tokens = refreshAccessToken(refreshToken);
     return res.json(tokens);
   } catch (err) {
-    return res.status(401).json({ error: err.message || 'Invalid refresh token' });
+    return res.status(401).json({ error: 'Invalid refresh token' });
   }
 });
 
@@ -85,10 +91,7 @@ router.post('/request-reset', (req, res) => {
   }
 
   const result = requestPasswordReset(email);
-  return res.json({
-    message: result.message,
-    resetToken: result.resetToken,
-  });
+  return res.json({ message: result.message });
 });
 
 router.post('/complete-reset', (req, res) => {
@@ -111,6 +114,10 @@ router.post('/logout', (req, res) => {
   if (sessionId) destroySession(sessionId);
   res.clearCookie('session_id', {
     httpOnly: cookieOptions.httpOnly,
+    secure: cookieOptions.secure,
+    sameSite: cookieOptions.sameSite,
+  });
+  res.clearCookie('csrf_token', {
     secure: cookieOptions.secure,
     sameSite: cookieOptions.sameSite,
   });
